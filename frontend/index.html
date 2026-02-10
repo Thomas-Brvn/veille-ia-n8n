@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veille IA - Résumés automatiques</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    header {
+      background: #1a1a2e;
+      border-bottom: 1px solid #2a2a4a;
+      padding: 1.5rem 2rem;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      color: #fff;
+    }
+
+    header p {
+      color: #888;
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .filters {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .filters button {
+      background: #1a1a2e;
+      color: #aaa;
+      border: 1px solid #2a2a4a;
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .filters button:hover,
+    .filters button.active {
+      background: #16213e;
+      color: #fff;
+      border-color: #4a6fa5;
+    }
+
+    .article {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .article:hover {
+      border-color: #4a6fa5;
+    }
+
+    .article-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .article h2 {
+      font-size: 1rem;
+      color: #fff;
+    }
+
+    .article h2 a {
+      color: #7aa2f7;
+      text-decoration: none;
+    }
+
+    .article h2 a:hover {
+      text-decoration: underline;
+    }
+
+    .source {
+      background: #2a2a4a;
+      color: #aaa;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .summary {
+      color: #ccc;
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+
+    .meta {
+      color: #666;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #666;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 3rem;
+      color: #666;
+    }
+
+    #last-update {
+      color: #555;
+      font-size: 0.8rem;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Veille IA</h1>
+    <p>Flux RSS + Llama 3.2 | Mis a jour automatiquement par n8n</p>
+  </header>
+
+  <div class="container">
+    <div id="last-update"></div>
+    <div class="filters" id="filters"></div>
+    <div id="articles">
+      <div class="loading">Chargement des articles...</div>
+    </div>
+  </div>
+
+  <script>
+    let allArticles = [];
+    let activeFilter = 'all';
+
+    async function loadArticles() {
+      try {
+        const res = await fetch('/data/summaries.json');
+        if (!res.ok) throw new Error('Pas de données');
+        allArticles = await res.json();
+        buildFilters();
+        renderArticles();
+      } catch(e) {
+        document.getElementById('articles').innerHTML =
+          '<div class="empty">Aucun article pour le moment. Lance le workflow n8n pour commencer.</div>';
+      }
+    }
+
+    function buildFilters() {
+      const sources = [...new Set(allArticles.map(a => a.source))];
+      const container = document.getElementById('filters');
+
+      let html = '<button class="active" onclick="filter(\'all\', this)">Tous</button>';
+      sources.forEach(s => {
+        html += `<button onclick="filter('${s}', this)">${s}</button>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function filter(source, btn) {
+      activeFilter = source;
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderArticles();
+    }
+
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return `il y a ${mins} min`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `il y a ${hours}h`;
+      const days = Math.floor(hours / 24);
+      return `il y a ${days}j`;
+    }
+
+    function renderArticles() {
+      const filtered = activeFilter === 'all'
+        ? allArticles
+        : allArticles.filter(a => a.source === activeFilter);
+
+      if (filtered.length === 0) {
+        document.getElementById('articles').innerHTML =
+          '<div class="empty">Aucun article pour cette source.</div>';
+        return;
+      }
+
+      if (filtered.length > 0) {
+        document.getElementById('last-update').textContent =
+          `Derniere mise a jour : ${timeAgo(filtered[0].generated_at)}`;
+      }
+
+      document.getElementById('articles').innerHTML = filtered.map(a => `
+        <div class="article">
+          <div class="article-header">
+            <h2><a href="${a.link}" target="_blank" ${a.original_title ? `title="${a.original_title}"` : ''}>${a.title}</a></h2>
+            <span class="source">${a.source}</span>
+          </div>
+          <p class="summary">${a.summary}</p>
+          <p class="meta">${timeAgo(a.date)}</p>
+        </div>
+      `).join('');
+    }
+
+    loadArticles();
+    setInterval(loadArticles, 60000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+{
+  "name": "Veille IA/Data - Résumé automatique des flux RSS",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
+        }
+      },
+      "id": "cron",
+      "name": "Toutes les heures",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news.ycombinator.com/rss"
+      },
+      "id": "rss-hn",
+      "name": "RSS Hacker News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [500, 100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/"
+      },
+      "id": "rss-tc",
+      "name": "RSS TechCrunch AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [500, 240],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://blog.google/technology/ai/rss/"
+      },
+      "id": "rss-google",
+      "name": "RSS Google AI Blog",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [500, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://huggingface.co/blog/feed.xml"
+      },
+      "id": "rss-hf",
+      "name": "RSS Hugging Face",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [500, 520],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://export.arxiv.org/rss/cs.AI"
+      },
+      "id": "rss-arxiv",
+      "name": "RSS ArXiv cs.AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [500, 660],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = ['ai', 'ia', 'llm', 'gpt', 'claude', 'gemini', 'mistral', 'ollama', 'langchain', 'machine learning', 'deep learning', 'neural', 'transformer', 'diffusion', 'embedding', 'vector', 'rag', 'fine-tuning', 'fine tuning', 'data science', 'dataset', 'nlp', 'computer vision', 'chatbot', 'openai', 'anthropic', 'hugging face', 'pytorch', 'tensorflow', 'model', 'training', 'inference', 'agent', 'copilot'];\n\nconst items = $input.all();\nconst seen = new Set();\nconst filtered = [];\n\nfor (const item of items) {\n  const title = (item.json.title || '').toLowerCase();\n  const desc = (item.json.contentSnippet || item.json.description || '').toLowerCase();\n  const text = title + ' ' + desc;\n  const key = item.json.title || item.json.link;\n\n  if (seen.has(key)) continue;\n  seen.add(key);\n\n  const isRelevant = keywords.some(kw => text.includes(kw));\n  if (isRelevant) {\n    filtered.push(item);\n  }\n}\n\nreturn filtered.slice(0, 15);"
+      },
+      "id": "dedup",
+      "name": "Filtrer IA/Data + dédupliquer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst http = require('http');\nconst filePath = '/home/node/data/summaries.json';\n\nfunction callOllama(prompt) {\n  return new Promise((resolve, reject) => {\n    const postData = JSON.stringify({ model: 'llama3.2', prompt, stream: false });\n    const options = {\n      hostname: 'ollama',\n      port: 11434,\n      path: '/api/generate',\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },\n      timeout: 1000000\n    };\n    const req = http.request(options, (res) => {\n      let body = '';\n      res.on('data', (chunk) => body += chunk);\n      res.on('end', () => {\n        try { resolve(JSON.parse(body)); } catch(e) { reject(e); }\n      });\n    });\n    req.on('error', reject);\n    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });\n    req.write(postData);\n    req.end();\n  });\n}\n\nconst title = $json.title || '';\nconst link = $json.link || '';\nconst content = ($json.contentSnippet || $json.content || $json.description || '')\n  .substring(0, 1500)\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst sourceMap = {\n  'news.ycombinator.com': 'Hacker News',\n  'techcrunch.com': 'TechCrunch',\n  'blog.google': 'Google AI Blog',\n  'huggingface.co': 'Hugging Face',\n  'arxiv.org': 'ArXiv',\n  'export.arxiv.org': 'ArXiv'\n};\nlet source = 'inconnu';\nconst hostMatch = link.match(/https?:\\/\\/([^\\/]+)/);\nif (hostMatch) {\n  const hostname = hostMatch[1];\n  source = sourceMap[hostname] || hostname;\n}\n\nconst prompt = `Tu es un assistant de veille spécialisé en intelligence artificielle et data science. Réponds EXACTEMENT dans ce format :\\n\\nTITRE_FR: [titre traduit en français]\\nRESUME: [résumé en 2-3 phrases concises en français avec les points clés techniques]\\n\\nTitre original : ${title}\\nContenu : ${content}`;\n\nconst data = await callOllama(prompt);\nconst response = data.response || '';\n\nlet titleFr = title;\nlet summary = 'Résumé indisponible';\nconst titleMatch = response.match(/TITRE_FR:\\s*(.+?)(?:\\n|$)/);\nconst summaryMatch = response.match(/RESUME:\\s*([\\s\\S]+)/);\nif (titleMatch) titleFr = titleMatch[1].trim();\nif (summaryMatch) summary = summaryMatch[1].trim();\n\nlet existing = [];\ntry {\n  existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));\n} catch(e) {}\n\nconst newEntry = {\n  title: titleFr,\n  original_title: title,\n  link,\n  source,\n  summary,\n  date: $json.pubDate || $json.isoDate || new Date().toISOString(),\n  generated_at: new Date().toISOString()\n};\n\nconst isDuplicate = existing.some(e => e.original_title === newEntry.original_title || e.title === newEntry.original_title);\nif (!isDuplicate) {\n  existing.unshift(newEntry);\n  existing = existing.slice(0, 50);\n  fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), 'utf-8');\n}\n\nreturn [{ json: newEntry }];"
+      },
+      "id": "summarize-and-save",
+      "name": "Résumer + Sauvegarder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 380]
+    }
+  ],
+  "connections": {
+    "Toutes les heures": {
+      "main": [
+        [
+          { "node": "RSS Hacker News", "type": "main", "index": 0 },
+          { "node": "RSS TechCrunch AI", "type": "main", "index": 0 },
+          { "node": "RSS Google AI Blog", "type": "main", "index": 0 },
+          { "node": "RSS Hugging Face", "type": "main", "index": 0 },
+          { "node": "RSS ArXiv cs.AI", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "RSS Hacker News": {
+      "main": [
+        [{ "node": "Filtrer IA/Data + dédupliquer", "type": "main", "index": 0 }]
+      ]
+    },
+    "RSS TechCrunch AI": {
+      "main": [
+        [{ "node": "Filtrer IA/Data + dédupliquer", "type": "main", "index": 0 }]
+      ]
+    },
+    "RSS Google AI Blog": {
+      "main": [
+        [{ "node": "Filtrer IA/Data + dédupliquer", "type": "main", "index": 0 }]
+      ]
+    },
+    "RSS Hugging Face": {
+      "main": [
+        [{ "node": "Filtrer IA/Data + dédupliquer", "type": "main", "index": 0 }]
+      ]
+    },
+    "RSS ArXiv cs.AI": {
+      "main": [
+        [{ "node": "Filtrer IA/Data + dédupliquer", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filtrer IA/Data + dédupliquer": {
+      "main": [
+        [{ "node": "Résumer + Sauvegarder", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

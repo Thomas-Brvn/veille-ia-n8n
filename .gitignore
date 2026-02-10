@@ -1,9 +1,8 @@
 # Environnement
 .env
 
-# Données (trop volumineuses pour git)
-data/*.csv
-data/*.json
+# Données générées
+data/summaries.json
 !data/.gitkeep
 
 # Python
@@ -19,7 +18,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code
+.claude/
+
 # Docker volumes
 n8n_data/
-qdrant_data/
 ollama_data/

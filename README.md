@@ -1,60 +1,65 @@
-# RAG Chatbot - Avis Amazon
+# Veille IA - Agrégateur intelligent de flux RSS
 
-Chatbot intelligent utilisant la technique **RAG** (Retrieval-Augmented Generation) pour répondre aux questions sur des produits Amazon en s'appuyant sur les avis clients réels.
-
-Entièrement orchestré par **n8n**, propulsé par **Llama 3.2** via Ollama, avec **Qdrant** comme base vectorielle.
+Agrégateur de veille technologique qui résume automatiquement les articles de plusieurs sources RSS grâce à **Llama 3.2**, orchestré par **n8n**.
 
 ## Architecture
 
 ```
-   Question utilisateur
-          │
-          ▼
-   ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-   │  Webhook     │────▶│  Embedding   │────▶│  Recherche   │
-   │  n8n /chat   │     │  (Ollama)    │     │  (Qdrant)    │
-   └─────────────┘     └──────────────┘     └──────┬───────┘
-                                                    │
-                                                    ▼
-                                            ┌──────────────┐
-                                            │  Prompt RAG  │
-                                            │  + Llama 3.2 │
-                                            └──────┬───────┘
-                                                    │
-                                                    ▼
-                                              Réponse JSON
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│  Hacker News   │     │  TechCrunch    │     │  Ars Technica  │
+│     (RSS)      │     │     (RSS)      │     │     (RSS)      │
+└───────┬────────┘     └───────┬────────┘     └───────┬────────┘
+        │                      │                      │
+        └──────────────────────┼──────────────────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │       n8n           │
+                    │  (toutes les heures)│
+                    │  Déduplique + filtre│
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │   Ollama            │
+                    │   Llama 3.2         │
+                    │   Résume en français│
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │   summaries.json    │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │   Frontend (nginx)  │
+                    │   localhost:8080     │
+                    └─────────────────────┘
 ```
 
 ## Stack technique
 
 | Composant | Rôle |
 |-----------|------|
-| **n8n** | Orchestration des workflows (ingestion + chatbot) |
-| **Ollama + Llama 3.2** | LLM local pour la génération de réponses |
-| **Ollama + nomic-embed-text** | Modèle d'embedding pour la vectorisation |
-| **Qdrant** | Base de données vectorielle |
-| **Python** | Script de préparation des données |
+| **n8n** | Orchestre la collecte RSS et le résumé toutes les heures |
+| **Ollama + Llama 3.2** | Résume chaque article en 2-3 phrases en français |
+| **Nginx** | Sert la page web du dashboard |
 
 ## Prérequis
 
 - [Docker](https://docs.docker.com/get-docker/) et Docker Compose
-- ~8 Go de RAM disponible (pour Llama 3.2)
-- Un dataset d'avis Amazon (voir section Données)
+- ~4 Go de RAM disponible (pour Llama 3.2)
 
 ## Installation
 
 ### 1. Cloner le repo
 
 ```bash
-git clone https://github.com/<ton-username>/rag-amazon-reviews.git
-cd rag-amazon-reviews
+git clone https://github.com/<ton-username>/veille-ia-n8n.git
+cd veille-ia-n8n
 ```
 
 ### 2. Configurer l'environnement
 
 ```bash
 cp .env.example .env
-# Modifier .env si besoin (ports, mots de passe)
 ```
 
 ### 3. Lancer les services
@@ -63,68 +68,50 @@ cp .env.example .env
 docker compose up -d
 ```
 
-### 4. Télécharger les modèles Ollama
+### 4. Télécharger Llama 3.2
 
 ```bash
-./scripts/pull_ollama_models.sh
+docker exec ollama ollama pull llama3.2
 ```
 
-### 5. Préparer les données
+### 5. Importer le workflow dans n8n
 
-Télécharger un dataset d'avis Amazon (ex: depuis [Kaggle](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews) ou [HuggingFace](https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023)), puis :
+1. Ouvrir http://localhost:5678
+2. Créer un compte
+3. **Workflows > Import from File** > sélectionner `workflows/01_rss_summarizer.json`
+4. Activer le workflow (toggle en haut à droite)
 
-```bash
-python scripts/prepare_data.py --input data/raw_reviews.csv --output data/reviews_clean.json
-```
+### 6. Voir les résumés
 
-### 6. Importer les workflows dans n8n
+Ouvrir http://localhost:8080
 
-1. Ouvrir n8n : http://localhost:5678
-2. Aller dans **Workflows > Import from File**
-3. Importer dans l'ordre :
-   - `workflows/00_create_collection.json` (exécuter une fois)
-   - `workflows/01_ingestion.json` (exécuter pour indexer les avis)
-   - `workflows/02_chatbot_rag.json` (activer le webhook)
+Le dashboard se met à jour automatiquement toutes les minutes.
 
-### 7. Tester le chatbot
+## Personnaliser les sources RSS
 
-```bash
-curl -X POST http://localhost:5678/webhook/chat \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Est-ce que ce produit est de bonne qualité ?"}'
-```
+Pour ajouter ou modifier les flux RSS, édite le workflow dans n8n :
+- Ajoute un node **RSS Feed Read** avec l'URL du flux
+- Connecte-le au node **Dédupliquer et limiter**
+
+Exemples de flux :
+- `https://www.theverge.com/rss/index.xml`
+- `https://www.wired.com/feed/rss`
+- `https://blog.google/rss/`
+- `https://openai.com/blog/rss.xml`
 
 ## Structure du projet
 
 ```
 .
-├── docker-compose.yml          # Services : n8n, Qdrant, Ollama
-├── .env.example                # Variables d'environnement
+├── docker-compose.yml              # n8n + Ollama + Nginx
+├── .env.example                    # Variables de configuration
 ├── workflows/
-│   ├── 00_create_collection.json   # Créer la collection Qdrant
-│   ├── 01_ingestion.json           # Ingestion des avis → embeddings → Qdrant
-│   └── 02_chatbot_rag.json         # Webhook chatbot RAG
-├── scripts/
-│   ├── prepare_data.py             # Nettoyage et préparation du dataset
-│   └── pull_ollama_models.sh       # Téléchargement des modèles
-├── data/                           # Données (non versionné)
-└── docs/                           # Documentation additionnelle
+│   └── 01_rss_summarizer.json      # Workflow n8n principal
+├── frontend/
+│   └── index.html                  # Dashboard des résumés
+├── data/                           # Résumés générés (non versionné)
+└── README.md
 ```
-
-## Workflows n8n
-
-### 00 - Créer la collection
-Initialise la collection `amazon_reviews` dans Qdrant avec les bons paramètres vectoriels (768 dimensions, distance cosinus).
-
-### 01 - Ingestion
-Lit le fichier JSON nettoyé, génère un embedding pour chaque avis via Ollama (nomic-embed-text), et stocke le vecteur + les métadonnées dans Qdrant.
-
-### 02 - Chatbot RAG
-Expose un webhook POST `/chat`. Pour chaque question :
-1. Génère l'embedding de la question
-2. Recherche les 5 avis les plus similaires dans Qdrant
-3. Construit un prompt avec le contexte des avis
-4. Envoie le prompt à Llama 3.2 pour générer une réponse synthétisée
 
 ## Licence
 
