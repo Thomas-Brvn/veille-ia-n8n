@@ -6,7 +6,7 @@ Cet outil filtre automatiquement les articles interessants autour de la data et 
 
 Ce projet avait avant tout pour but de prendre en main n8n pour la premiere fois. C'est un premier projet simple, mais qui m'a permis de decouvrir les capacites de cet outil d'orchestration et de voir ce qu'on peut faire en combinant des workflows automatises avec un LLM local.
 
-![Apercu du dashboard](images/Enregistrement_de_l_e_cran_2026_02_12_a_19_56_54_V1.gif)
+![Apercu du dashboard](images/demo.gif)
 
 ## Workflow n8n
 
