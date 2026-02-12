@@ -1,6 +1,7 @@
-# Veille IA - Agregateur de news intelligent
+# Veille IA - Agregateur de news avec N8N
 
-Les avancees en intelligence artificielle vont tres vite. Chaque jour, des dizaines d'articles sortent sur le sujet, mais tous ne se valent pas. Certains sont du bruit, d'autres sont vraiment pertinents.
+
+Les avancees en intelligence artificielle vont tres vite. Chaque jour des dizaines d'articles sortent sur le sujetmais tous ne se valent pas.
 
 Cet outil filtre automatiquement les articles interessants autour de la data et de l'IA, aupres de sources connues, fiables et verifiables (ArXiv, TechCrunch, Google AI Blog, Hugging Face, Hacker News). Un LLM local (Llama 3.2 via Ollama) resume chaque article en francais et le classe par categorie.
 
